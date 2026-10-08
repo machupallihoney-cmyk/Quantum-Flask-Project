@@ -1,0 +1,112 @@
+const vehiclesEl = document.getElementById("vehicles");
+const countEl = document.getElementById("vehicleCount");
+const statusEl = document.getElementById("status");
+const messageEl = document.getElementById("message");
+
+let vehicles = [
+  {id: "EV-01", battery: 28, target: 80, priority: 5},
+  {id: "EV-02", battery: 55, target: 90, priority: 3},
+  {id: "EV-03", battery: 20, target: 70, priority: 4}
+];
+
+function render() {
+  countEl.textContent = `${vehicles.length} EVs`;
+  vehiclesEl.innerHTML = "";
+
+  vehicles.forEach((ev, index) => {
+    const row = document.createElement("div");
+    row.className = "vehicle";
+    row.innerHTML = `
+      <div class="vehicle-head">
+        <strong>${ev.id}</strong>
+        <button class="remove" data-index="${index}" title="Remove">×</button>
+      </div>
+      <div class="fields">
+        <label>Battery %<input type="number" min="0" max="100" value="${ev.battery}" data-k="battery" data-i="${index}"></label>
+        <label>Target %<input type="number" min="1" max="100" value="${ev.target}" data-k="target" data-i="${index}"></label>
+        <label>Priority<input type="number" min="1" max="5" value="${ev.priority}" data-k="priority" data-i="${index}"></label>
+      </div>
+    `;
+    vehiclesEl.appendChild(row);
+  });
+}
+
+vehiclesEl.addEventListener("input", e => {
+  if (!e.target.dataset.i) return;
+  const i = Number(e.target.dataset.i);
+  const key = e.target.dataset.k;
+  vehicles[i][key] = Number(e.target.value);
+});
+
+vehiclesEl.addEventListener("click", e => {
+  if (!e.target.classList.contains("remove")) return;
+  vehicles.splice(Number(e.target.dataset.index), 1);
+  render();
+});
+
+document.getElementById("addBtn").addEventListener("click", () => {
+  const next = vehicles.length + 1;
+  vehicles.push({id: `EV-${String(next).padStart(2, "0")}`, battery: 30, target: 80, priority: 3});
+  render();
+});
+
+document.getElementById("sampleBtn").addEventListener("click", () => {
+  vehicles = [
+    {id: "EV-01", battery: 28, target: 80, priority: 5},
+    {id: "EV-02", battery: 55, target: 90, priority: 3},
+    {id: "EV-03", battery: 20, target: 70, priority: 4}
+  ];
+  document.getElementById("capacity").value = 2;
+  render();
+});
+
+function cards(items) {
+  if (!items.length) return '<div class="empty">None</div>';
+  return items.map(ev => `
+    <div class="schedule-row">
+      <div>
+        <strong>${ev.id}</strong>
+        <small>${ev.battery}% → ${ev.target}%</small>
+      </div>
+      <span>${ev.estimated_kwh} kWh</span>
+    </div>
+  `).join("");
+}
+
+document.getElementById("optimizeBtn").addEventListener("click", async () => {
+  statusEl.textContent = "Optimizing…";
+  statusEl.className = "status busy";
+
+  try {
+    const response = await fetch("/api/optimize", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        station_capacity: Number(document.getElementById("capacity").value),
+        vehicles
+      })
+    });
+
+    const payload = await response.json();
+    if (!payload.success) throw new Error(payload.error);
+
+    const r = payload.result;
+    document.getElementById("scheduled").textContent = r.scheduled.length;
+    document.getElementById("energy").textContent = `${r.total_energy_kwh} kWh`;
+    document.getElementById("battery").textContent = `${r.average_current_battery}%`;
+    document.getElementById("schedule").innerHTML = cards(r.scheduled);
+    document.getElementById("waiting").innerHTML = cards(r.waiting);
+    document.getElementById("schedule").classList.remove("empty");
+    document.getElementById("waiting").classList.remove("empty");
+
+    messageEl.textContent = r.note;
+    statusEl.textContent = r.quantum_backend_available ? "Quantum ready" : "Demo mode";
+    statusEl.className = "status success";
+  } catch (error) {
+    messageEl.textContent = error.message;
+    statusEl.textContent = "Error";
+    statusEl.className = "status error";
+  }
+});
+
+render();
